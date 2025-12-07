@@ -83,18 +83,18 @@ func (d *Detector) handleMessage(msg cat.Message) error {
 		return nil
 	}
 
-	lastPoint := passage.Track[0] //TODO подумать над логикой, может завести в последнее просто ноль.
-	for _, point := range passage.Track {
-		if point.T > lastPoint.T {
-			lastPoint = point
+	maxIndex := 0
+	for i := 1; i < len(passage.Track); i++ {
+		if passage.Track[i].T > passage.Track[maxIndex].T {
+			maxIndex = i
 		}
 	}
 
-	sec := time.Unix(int64(lastPoint.T), 0).Second()
+	sec := time.Unix(int64(passage.Track[maxIndex].T), 0).Second()
 	if sec >= 45 && sec <= 59 {
 		atomic.AddInt32(&d.violations, 1)
 		log.Printf("Message %d processing", atomic.LoadInt32(&d.processed))
-		return d.saveViolation(passage.LicenseNum, lastPoint)
+		return d.saveViolation(passage.LicenseNum, passage.Track[maxIndex])
 	}
 	log.Printf("Message %d processed, Violations not detected", atomic.LoadInt32(&d.processed))
 	return nil
@@ -103,7 +103,7 @@ func (d *Detector) handleMessage(msg cat.Message) error {
 func (d *Detector) saveViolation(license string, point models.TPoint) error {
 	const op = "violations_detector.saveViolation"
 
-	key := fmt.Sprintf("%s_%d", license, point.T)
+	key := fmt.Sprintf("%s_%s", license, time.Unix(int64(point.T), 0).Format("2006-01-02_15:04:05"))
 	value := fmt.Sprintf(`{"license":"%s","time":%d,"x":%f,"y":%f}`, license, point.T, point.X, point.Y)
 
 	for i := 1; i <= d.maxRetries; i++ {
