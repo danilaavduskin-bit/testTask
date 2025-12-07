@@ -18,17 +18,22 @@ func EnvInit() *Config {
 		return nil
 	}
 
-	maxM, err := strconv.Atoi(os.Getenv("MAX_MSG"))
-	if err != nil || maxM <= 0 {
-		maxM = 200
-	}
-	maxR, err := strconv.Atoi(os.Getenv("MAX_RETRY"))
-	if err != nil || maxR < 0 {
-		maxM = 3
+	cfg := &Config{
+		MaxMessages: 200, // значения по умолчанию
+		MaxRetries:  3,
 	}
 
-	return &Config{
-		MaxMessages: int32(maxM),
-		MaxRetries:  maxR,
+	if val := os.Getenv("MAX_MSG"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil && n > 0 {
+			cfg.MaxMessages = int32(n)
+		}
 	}
+
+	if val := os.Getenv("MAX_RETRY"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil && n >= 0 {
+			cfg.MaxRetries = n
+		}
+	}
+
+	return cfg
 }
