@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"sync/atomic"
+	"time"
+
 	"github.com/danilaavduskin-bit/testTask/config"
 	"github.com/kvolis/tesgode/cat"
 	"github.com/kvolis/tesgode/dog"
 	"github.com/kvolis/tesgode/models"
-	"log"
-	"sync/atomic"
-	"time"
 )
 
+// Правильный слой - разделить код на слои, но исходя из вводных условий задачи
+// решил остановиться на таком варианте, готов к рефакторингу если потребуется
 type Storage interface {
 	Insert(key string, value []byte) (int, error)
 	Close() error
@@ -21,6 +24,7 @@ type Storage interface {
 }
 
 type Detector struct {
+	// Правильный тон - взаимодействовать через абстракции, но придется усложнять код через ввод адаптера для Cat
 	catClient   *cat.Cat
 	dogClient   Storage
 	maxMessages int32
@@ -43,7 +47,7 @@ func (d *Detector) Run(ctx context.Context) error {
 
 	ch, err := d.catClient.Subscript()
 	if err != nil {
-		return fmt.Errorf("[%s]Cat subscription error: %w", op, err)
+		return fmt.Errorf("%s: subscription failed: %w", op, err)
 	}
 
 	log.Println("Service started, waiting for messages...")
@@ -75,8 +79,7 @@ func (d *Detector) handleMessage(msg cat.Message) error {
 
 	var passage models.Passage
 	if err := json.Unmarshal(msg.Bytes(), &passage); err != nil {
-		log.Printf("Message %d processed, Invalid JSON (from Cat): %v", atomic.LoadInt32(&d.processed), err)
-		return nil
+		return fmt.Errorf("%s: message %d: invalid JSON: %w", op, atomic.LoadInt32(&d.processed), err)
 	}
 
 	if len(passage.Track) == 0 {
@@ -93,30 +96,33 @@ func (d *Detector) handleMessage(msg cat.Message) error {
 	sec := time.Unix(int64(passage.Track[maxIndex].T), 0).Second()
 	if sec >= 45 && sec <= 59 {
 		atomic.AddInt32(&d.violations, 1)
-		log.Printf("Message %d processing", atomic.LoadInt32(&d.processed))
-		return d.saveViolation(passage.LicenseNum, passage.Track[maxIndex])
+
+		if err := d.saveViolation(passage.LicenseNum, passage.Track[maxIndex].T); err != nil {
+			return fmt.Errorf("%s: save failed: %w", op, err)
+		}
+	} else {
+		log.Printf("Message %d processed, Violations not detected", atomic.LoadInt32(&d.processed))
 	}
-	log.Printf("Message %d processed, Violations not detected", atomic.LoadInt32(&d.processed))
+
 	return nil
 }
 
-func (d *Detector) saveViolation(license string, point models.TPoint) error {
+func (d *Detector) saveViolation(license string, T int) error {
 	const op = "violations_detector.saveViolation"
 
-	key := fmt.Sprintf("%s_%s", license, time.Unix(int64(point.T), 0).Format("2006-01-02_15:04:05"))
-	value := fmt.Sprintf(`{"license":"%s","time":%d,"x":%f,"y":%f}`, license, point.T, point.X, point.Y)
+	key := fmt.Sprintf("%s_%s", license, time.Unix(int64(T), 0).Format("2006-01-02_15:04:05"))
+	value := fmt.Sprintf(`{"license":"%s","time":%d}`, license, T)
 
 	for i := 1; i <= d.maxRetries; i++ {
 		_, err := d.dogClient.Insert(key, []byte(value))
+		// Специально пишу наоборот, чтобы глаз не перепутал с err != nil
 		if nil == err {
 			return nil
 		}
 
 		if !errors.Is(err, dog.ErrInternal) {
-			return fmt.Errorf("[%s]Insert error: %w", op, err)
+			return fmt.Errorf("%s: insert error: %w", op, err)
 		}
-
-		log.Printf("%v", err)
 
 		if i < d.maxRetries {
 			delay := time.Duration(i) * 200 * time.Millisecond
@@ -126,6 +132,5 @@ func (d *Detector) saveViolation(license string, point models.TPoint) error {
 		}
 	}
 
-	log.Printf("Failed to save violation after %d attempts: %s", d.maxRetries, license)
-	return nil
+	return fmt.Errorf("%s: unexpected error", op)
 }
