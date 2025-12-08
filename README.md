@@ -10,7 +10,7 @@ go run cmd/main/main.go
 ```
 Либо
 ```
-docker build <container-name> .
+docker build -t <container-name> .
 docker run <container-name>
 ```
 ## Описание решения
