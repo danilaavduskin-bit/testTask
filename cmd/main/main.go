@@ -2,19 +2,20 @@ package main
 
 import (
 	"context"
-	"github.com/danilaavduskin-bit/testTask/config"
-	vd "github.com/danilaavduskin-bit/testTask/internal/violations-detector"
-	"github.com/kvolis/tesgode/cat"
-	"github.com/kvolis/tesgode/dog"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/danilaavduskin-bit/testTask/config"
+	vd "github.com/danilaavduskin-bit/testTask/internal/violations-detector"
+	"github.com/kvolis/tesgode/cat"
+	"github.com/kvolis/tesgode/dog"
 )
 
 func main() {
-	cfg := config.EnvInit()
+	cfg := config.NewConfig()
 	catClient := cat.New()
 	dogClient := dog.New()
 
